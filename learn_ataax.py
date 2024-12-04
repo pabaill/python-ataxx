@@ -4,7 +4,9 @@ import ataxx.players
 import numpy as np
 from ataxx import FEN_4CORNERS, FEN_4SIDES, FEN_CENTERX, FEN_EMPTY, FEN_ISLAND, FEN_STARTPOS
 from tqdm import tqdm
-import hsm
+import torch
+import hsmv2
+import mcts
 
 BLACK, WHITE, GAP, EMPTY = 0, 1, 2, 3
 
@@ -156,6 +158,36 @@ def keep_clustered_eval_function(board: ataxx.Board):
 
     return points - 5 * len(find_l_shapes(board)) - 5 * len(find_u_shapes(board))
 
+
+def play_mcts(opponent="alphabeta", board_dim=7, depth=2):
+    board = ataxx.Board(board_dim=board_dim)
+    turn_counter = 1
+
+    while not board.gameover():
+        try:
+            if turn_counter % 2 == 1:
+                # Opponent goes first
+                if opponent == 'alphabeta':
+                    move = ataxx.players.alphabeta(board, float('-inf'), float('inf'), depth)
+                else:
+                    move = opponent(board)
+            else:
+                move = mcts.get_best_move(board, simulations=200)
+            if board.is_legal(move):
+                board.makemove(move)
+            else:
+                print(f"Illegal move: {move}")
+        except KeyboardInterrupt:
+            print("")
+            break
+        turn_counter += 1
+        print(board)
+    
+    print(f"Result: {board.result()}")
+    return board.result()
+
+
+
 def play_hierarchical_softmax_agent(agent, depth=2, opponent='alphabeta', board="startpos", board_dim=7):
     board = ataxx.Board(board, board_dim=board_dim)
     turn_counter = 1
@@ -170,7 +202,7 @@ def play_hierarchical_softmax_agent(agent, depth=2, opponent='alphabeta', board=
                     move = opponent(board)
             else:
                 # Your Hierarchical Softmax agent's move
-                move = hsm.generate_move(agent, board)
+                move = agent.select_action(board)
             if board.is_legal(move):
                 board.makemove(move)
             else:
@@ -179,6 +211,7 @@ def play_hierarchical_softmax_agent(agent, depth=2, opponent='alphabeta', board=
             print("")
             break
         turn_counter += 1
+        print(board)
     
     print(f"Result: {board.result()}")
     return board.result()
@@ -259,15 +292,27 @@ def main():
             if result == '1-0':
                 wincount+=1
         print(wincount / n_games)
-    if mode == 'hsm':
-        agent = hsm.get_agent()
+    if mode == 'train_hsmv2':
+        hsmv2.train_policy_network(sys.argv[2])
+    if mode == 'hsmv2':
+        agent = hsmv2.PolicyNetwork(action_dim=7)  # Reinitialize the model
+        agent.load_state_dict(torch.load(sys.argv[2]))  # Load the weights
+        agent.eval()  # Set to evaluation mode if not continuing training
         board_size = 7
         wincount = 0
-        n_games = 100
+        n_games = 1
         for i in range(n_games):
             result = play_hierarchical_softmax_agent(agent, opponent='alphabeta', board_dim=board_size)
             if result == '1-0':
                 wincount+=1
+        print(wincount / n_games)
+    if mode == 'mcts':
+        wincount = 0
+        n_games = 1
+        for i in range(n_games):
+            result = play_mcts(opponent='alphabeta')
+            if result == '1-0':
+                wincount += 1
         print(wincount / n_games)
 
 

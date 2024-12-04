@@ -73,8 +73,9 @@ class AtaxxEnv(gym.Env):
             else:
                 reward = 0  # Draw
         else:
-            reward = 0.1  # Reward some exploration
+            reward = 0.01  # Reward some exploration
 
+        # Try playing against ourselves???
         # If the game is not over, the opponent takes a turn
         opponent_move = self.get_opponent_move()
         if not done and opponent_move:
