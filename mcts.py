@@ -5,7 +5,7 @@ import ataxx
 from tqdm import tqdm
 from heapq import nlargest
 
-ROLLOUT_DEPTH = 3
+ROLLOUT_DEPTH = 5
 
 BEAM_SIZE = 3
 
