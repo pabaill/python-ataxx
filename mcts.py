@@ -3,9 +3,11 @@ import random
 import copy
 import ataxx
 from tqdm import tqdm
-import multiprocessing
+from heapq import nlargest
 
-# ROLLOUT_DEPTH = 10
+ROLLOUT_DEPTH = 3
+
+BEAM_SIZE = 3
 
 def improved_eval(board: ataxx.Board, move: ataxx.Move):
     s1 = 1
@@ -82,7 +84,8 @@ class MCTSNode:
         self.legal_moves = list(board.legal_moves())
     
     def is_fully_expanded(self):
-        return len(self.children) == len(self.legal_moves)
+        # return len(self.children) == len(self.legal_moves)
+        return len(self.children) >= min(len(self.legal_moves), BEAM_SIZE)
     
     def best_child(self, exploration_weight=1.4):
         # """ Select the child with the highest UCB1 value """
@@ -94,12 +97,12 @@ class MCTSNode:
         ]
         return self.children[np.argmax(ucb_values)]
 
-def mcts(board, simulations=1000, beam_width=3):
+def mcts(board, simulations=1000):
     root_node = MCTSNode(board)
     
     for _ in tqdm(range(simulations)):
         node = root_node
-        
+
         # Selection phase: Traverse the tree until a leaf node is found
         while node.is_fully_expanded() and node.children:
             node = node.best_child()
@@ -111,7 +114,7 @@ def mcts(board, simulations=1000, beam_width=3):
             # Sort moves by their evaluation scores in descending order
             move_scores.sort(key=lambda x: x[1], reverse=True)
             # Select the top `beam_width` moves
-            top_moves = [move for move, _ in move_scores[:beam_width]]
+            top_moves = [move for move, _ in move_scores[:BEAM_SIZE]]
             
             for move in top_moves:
                 # For each top move, expand the tree
@@ -134,24 +137,35 @@ def mcts(board, simulations=1000, beam_width=3):
     return best_child.move
 
 def simulate_with_eval(board):
-    """ Use improved_eval to simulate a game and return the winner. """
+    """ Use improved_eval to simulate a game and return the winner, considering only the top BEAM_SIZE moves. """
+    board = copy.deepcopy(board)
     color = board.turn
-    move_count = 0
-    while not board.gameover():
+    
+    # While not reaching the maximum rollout depth (ROLLOUT_DEPTH)
+    for i in range(ROLLOUT_DEPTH):
         # Generate legal moves and evaluate them using improved_eval
         moves = board.legal_moves()
-        scores = [improved_eval(board, move) for move in moves]
-
-        # Normalize the scores to make them probabilities
-        z = sum(scores)
-        if z == 0:
-            make_move = random.choice(moves)
-        else:
-            normalized_scores = np.array(scores) / z
-            make_move = np.random.choice(moves, p=normalized_scores)
         
+        # If no legal moves, break the simulation
+        if not moves:
+            break
+        
+        # Evaluate the moves and keep track of the top BEAM_SIZE moves using nlargest
+        move_scores = [(move, improved_eval(board, move)) for move in moves]
+        
+        # Use nlargest to get the top BEAM_SIZE moves (faster than sorting)
+        top_moves = nlargest(BEAM_SIZE, move_scores, key=lambda x: x[1])
+        
+        # Select one move from the top moves based on the normalized evaluation scores
+        top_moves_scores = np.array([score for _, score in top_moves])
+        z = top_moves_scores.sum()
+        if z == 0 or np.isnan(z):
+            break
+        normalized_scores = top_moves_scores / z
+        make_move = np.random.choice([move for move, _ in top_moves], p=normalized_scores)
+        
+        # Make the move on the board
         board.makemove(make_move)
-        move_count += 1
     
     # Return the winner (1 for the current player, -1 for opponent, 0 for draw)
     black, white, _, _ = board.count()
@@ -160,6 +174,7 @@ def simulate_with_eval(board):
     elif white > black:
         return 1 if color == ataxx.WHITE else -1  # Current player wins
     return 0  # Draw
+
 
 def get_best_move(board: ataxx.Board, simulations=1000):
     """Use MCTS to select the best move, integrating the improved_eval function."""

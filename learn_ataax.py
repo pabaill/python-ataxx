@@ -7,6 +7,7 @@ from tqdm import tqdm
 import torch
 import hsmv2
 import mcts
+import matplotlib.pyplot as plt
 
 BLACK, WHITE, GAP, EMPTY = 0, 1, 2, 3
 
@@ -163,6 +164,8 @@ def play_mcts(opponent="alphabeta", board_dim=7, depth=2):
     board = ataxx.Board(board_dim=board_dim)
     turn_counter = 1
 
+    game_history = []
+
     while not board.gameover():
         try:
             if turn_counter % 2 == 1:
@@ -172,7 +175,7 @@ def play_mcts(opponent="alphabeta", board_dim=7, depth=2):
                 else:
                     move = opponent(board)
             else:
-                move = mcts.get_best_move(board, simulations=200)
+                move = mcts.get_best_move(board, simulations=100)
             if board.is_legal(move):
                 board.makemove(move)
             else:
@@ -180,10 +183,15 @@ def play_mcts(opponent="alphabeta", board_dim=7, depth=2):
         except KeyboardInterrupt:
             print("")
             break
+        game_history.append(-board.score())
         turn_counter += 1
         print(board)
     
     print(f"Result: {board.result()}")
+    plt.plot(game_history)
+    plt.xlabel('Turn')
+    plt.ylabel('Net Pieces')
+    plt.show()
     return board.result()
 
 
@@ -310,7 +318,7 @@ def main():
         wincount = 0
         n_games = 1
         for i in range(n_games):
-            result = play_mcts(opponent='alphabeta')
+            result = play_mcts(opponent=ataxx.players.greedy)
             if result == '1-0':
                 wincount += 1
         print(wincount / n_games)
